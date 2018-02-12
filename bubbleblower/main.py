@@ -199,6 +199,7 @@ class SpeciesManager():
         # Diverging groups are defined by having a different base extensions, all other tips get the non-divergent base
         # A merge requires both groups to have their union equal both of their previous group sets.
         kmer = next(self.generator)
+        print("Iteration {}".format(self.iteration))
 
         diverging_species = set()
         for species in self.species.values():
@@ -218,7 +219,9 @@ class SpeciesManager():
                 else:
                     diverging_species_groups.add(right)
 
+        ready_groups = set()
         for group in self.groups:
+            group_ready = True
             if group in diverging_species_groups:
                 # Generate unique kmer that diverges from this iteration's kmer
                 group_tip_kmer = self.species[ next(group.__iter__()) ].tip_kmer()
@@ -231,31 +234,57 @@ class SpeciesManager():
                 mut_kmer = self.kmer_generator.random_mutation(group_tip_kmer)
                 for sid in group:
                     self.species[sid].extend(mut_kmer, diverge=True)
+                print("{} is diverging with {}".format(group, mut_kmer[-1]))
             else:
                 for sid in group:
                     self.species[sid].extend(kmer)
+                    group_ready &= self.species[sid].mode == Mode.READY
+
+            # Track which groups are ready to merge
+            if group_ready:
+                ready_groups.add(group)
+
+        # try merging READY branches that have the same previous set
+        seen_prev_groups = {}
+        for group in ready_groups:
+            if group in self.prev_groups:
+                prev_group = self.prev_groups[group]
+                if prev_group in seen_prev_groups:
+                    seen_prev_groups[prev_group].add(group)
+                else:
+                    seen_prev_groups[prev_group] = {group}
+
+        for groupset in seen_prev_groups.values():
+            assert len(groupset) <= 2
+            if len(groupset) == 2:
+                self._merge_groups(*groupset)
 
         self.iteration += 1
 
-    def save_fasta(self):
+    def save_fasta(self, filename):
         """Saves the species sequences to a single fasta file"""
-        pass
+        with open(filename, 'w') as f:
+            f.write(self.format_fasta())
 
     def print_seqs(self):
-        for s in self.species.values:
-            print("> Species #{}\n  {}\n".format(s.sid, s.seq))
+        print("\n".join([s.seq for s in self.species.values()]))
+
+
+    def format_fasta(self) -> str:
+        return "".join(["> Species #{}\n  {}\n".format(s.sid, s.seq) for s in self.species.values()])
 
 def main():
     km = KmerManager(9)
-    sm = SpeciesManager(8, km)
+    sm = SpeciesManager(4, km)
     for i in range (45):
-        if i % 5 == 0:
-            print(sm.groups)
         sm.iterate()
-    print("\n".join([i.seq for i in sm.species.values()]))
-    #gg = km.generator.generate()
-    #for i in range(10000):
-    #    print(i, next(gg))
+        if i % 1 == 0:
+            print([set(i) for i in sm.groups])
+            ipdb.set_trace()
+            #print({i.sid : i.mode == Mode.READY for i in sm.species.values()})
+    sm.print_seqs()
+
+    return sm
 
 class TestSpeciesContainer(object):
     def test_modes(self):
