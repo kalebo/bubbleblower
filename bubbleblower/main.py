@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import random
+from colorama import Fore
 from enum import Enum
 from math import e
 import ipdb
@@ -118,6 +119,7 @@ class SpeciesManager():
         self.cross_merges = allow_cross_merges
         self.iteration = 0
         self.mu = 1/16 # mutation/iteration
+        self.orig_seq = ""
         k = kmer_manager.k
 
         self.species = { i : SpeciesContainer(i, k) for i in range(species_count) }
@@ -199,6 +201,11 @@ class SpeciesManager():
         # Diverging groups are defined by having a different base extensions, all other tips get the non-divergent base
         # A merge requires both groups to have their union equal both of their previous group sets.
         kmer = next(self.generator)
+        if self.orig_seq == "":
+            self.orig_seq = kmer
+        else:
+            self.orig_seq += kmer[-1]
+
         print("Iteration {}".format(self.iteration))
 
         diverging_species = set()
@@ -267,20 +274,21 @@ class SpeciesManager():
             f.write(self.format_fasta())
 
     def print_seqs(self):
-        print("\n".join([s.seq for s in self.species.values()]))
+        print("\n".join([self._create_highted_seq(s.seq) for s in self.species.values()]))
 
+    def _create_highted_seq(self, seq):
+        return "".join([c if c == o else Fore.RED + c + Fore.RESET for c, o in zip(seq, self.orig_seq)])
 
     def format_fasta(self) -> str:
         return "".join(["> Species #{}\n  {}\n".format(s.sid, s.seq) for s in self.species.values()])
 
 def main():
     km = KmerManager(9)
-    sm = SpeciesManager(4, km)
+    sm = SpeciesManager(6, km)
     for i in range (45):
         sm.iterate()
         if i % 1 == 0:
             print([set(i) for i in sm.groups])
-            ipdb.set_trace()
             #print({i.sid : i.mode == Mode.READY for i in sm.species.values()})
     sm.print_seqs()
 
