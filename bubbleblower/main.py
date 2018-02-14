@@ -7,9 +7,9 @@ import ipdb
 
 """
 TODO:
-  [ ]  add merge capability
+  [ ]  add multiple merge capability
   [ ]  add graph generation
-  [ ]  
+  [ ]  simulated block indels
 """
 
 class KmerTracker():
