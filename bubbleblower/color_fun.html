@@ -1,0 +1,22 @@
+<html>
+
+    <head>
+        <script src="./color_fun.js"></script>
+    </head>
+
+    <body>
+        <script>
+            var c = document.createDocumentFragment();
+
+            for (var i=0; i<=100; i++) {
+                var e = document.createElement("div");
+                e.style = `height: 1.2em; background-color: #${map_color(i)}`;
+                e.textContent = i.toString();
+                c.appendChild(e);
+            }
+            document.body.appendChild(c);
+        </script>
+
+    </body>
+
+</html>

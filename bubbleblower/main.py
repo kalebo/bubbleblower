@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 import random
+import networkx as nx
+from networkx.drawing.nx_agraph import write_dot
+from color_fun import int_to_hsv
 from colorama import Fore
+
 from enum import Enum
 from math import e
 import ipdb
@@ -111,22 +115,31 @@ class SpeciesContainer():
         return self.seq[-self.k:]
 
 class SpeciesManager():
-    def __init__(self, species_count, kmer_manager, allow_cross_merges=False):
+    def __init__(self, species_count, desired_len, kmer_manager, mu=1/16, allow_cross_merges=False):
         self.manager = kmer_manager
         self.kmer_generator = kmer_manager.generator
+        self.desired_len = desired_len
         self.generator = kmer_manager.generator.generate()
         self.tracker = kmer_manager.tracker
         self.cross_merges = allow_cross_merges
-        self.iteration = 0
-        self.mu = 1/16 # mutation/iteration
-        self.orig_seq = ""
-        k = kmer_manager.k
 
+        self.iteration = 0
+        self.mu = mu # mutation/iteration
+
+        self.orig_seq = ""
+        self.graph = nx.Graph()
+        self.color_map ={ i : int_to_hsv(i, to_string=True) for i in range(species_count) }
+        self.graph_style = {"style" :"wedged", "label": "", "shape":"circle"}
+
+        k = kmer_manager.k
         self.species = { i : SpeciesContainer(i, k) for i in range(species_count) }
 
         # Initially all species will be present in the first kmer and thus a single group
         self.groups = [ frozenset(i for i in range(species_count)) ]
         self.prev_groups = {}
+
+    def _group_to_color_str(self, group):
+        return ":".join([self.color_map[i] for i in group])
 
     def _split_group(self, group) -> (frozenset, frozenset):
         if len(group) <= 1: # This avoids bulges
@@ -189,7 +202,7 @@ class SpeciesManager():
             µ is average rate of mutation for a species which lessens as iterations increase past a threshold.
             x is how many iterations have passed since a mutation in a species.
         """
-        return 1 - e**(-(self.mu if self.iteration < 25 else 0) * species.last_mutation_timer) #todo: scale mu instead of nuking it.
+        return 1 - e**(-(self.mu if self.iteration < (self.desired_len - self.manager.k) else 0) * species.last_mutation_timer) #todo: scale mu instead of nuking it.
 
     def _find_containing_group(self, sid):
         for g in self.groups:
@@ -203,6 +216,7 @@ class SpeciesManager():
         kmer = next(self.generator)
         if self.orig_seq == "":
             self.orig_seq = kmer
+            self.graph.add_node(self.groups[0], color=self._group_to_color_str(self.groups[0]), **self.graph_style)
         else:
             self.orig_seq += kmer[-1]
 
@@ -225,6 +239,12 @@ class SpeciesManager():
                     diverging_species_groups.add(left)
                 else:
                     diverging_species_groups.add(right)
+
+                # Graph the results of the split
+                self.graph.add_node(left, color=self._group_to_color_str(left),**self.graph_style)
+                self.graph.add_edge(left, self.prev_groups[left])
+                self.graph.add_node(right, color=self._group_to_color_str(right), **self.graph_style)
+                self.graph.add_edge(right, self.prev_groups[right])
 
         ready_groups = set()
         for group in self.groups:
@@ -261,10 +281,14 @@ class SpeciesManager():
                 else:
                     seen_prev_groups[prev_group] = {group}
 
-        for groupset in seen_prev_groups.values():
+        for prev_group, groupset in seen_prev_groups.items():
             assert len(groupset) <= 2
             if len(groupset) == 2:
                 self._merge_groups(*groupset)
+                left, right = groupset
+                self.graph.add_node(prev_group, color=self._group_to_color_str(prev_group), **self.graph_style)
+                self.graph.add_edge(prev_group, left)
+                self.graph.add_edge(prev_group, right)
 
         self.iteration += 1
 
@@ -282,10 +306,10 @@ class SpeciesManager():
     def format_fasta(self) -> str:
         return "".join(["> Species #{}\n  {}\n".format(s.sid, s.seq) for s in self.species.values()])
 
-def main():
-    km = KmerManager(9)
-    sm = SpeciesManager(6, km)
-    for i in range (45):
+def example(k, s, r):
+    km = KmerManager(k)
+    sm = SpeciesManager(s, r, km)
+    for i in range (r):
         sm.iterate()
         if i % 1 == 0:
             print([set(i) for i in sm.groups])
@@ -313,5 +337,5 @@ class TestSpeciesContainer(object):
 
 if __name__ == "__main__":
     km = KmerManager(9)
-    sm = SpeciesManager(4, km)
+    sm = SpeciesManager(4, 45, km)
     #main()
