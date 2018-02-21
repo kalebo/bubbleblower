@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import random
 import networkx as nx
+import subprocess
+
 from networkx.drawing.nx_agraph import write_dot
 from color_fun import int_to_hsv
 from colorama import Fore
@@ -129,7 +131,7 @@ class SpeciesManager():
         self.orig_seq = ""
         self.graph = nx.Graph()
         self.color_map ={ i : int_to_hsv(i, to_string=True) for i in range(species_count) }
-        self.graph_style = {"style" :"wedged", "label": "", "shape":"circle"}
+        self.graph_style = {"style" :"wedged", "shape":"circle" }#,  "label": ""}
 
         k = kmer_manager.k
         self.species = { i : SpeciesContainer(i, k) for i in range(species_count) }
@@ -216,7 +218,7 @@ class SpeciesManager():
         kmer = next(self.generator)
         if self.orig_seq == "":
             self.orig_seq = kmer
-            self.graph.add_node(self.groups[0], color=self._group_to_color_str(self.groups[0]), **self.graph_style)
+            self.graph.add_node(self._hash_group(self.groups[0]), color=self._group_to_color_str(self.groups[0]), **self.graph_style) ##
         else:
             self.orig_seq += kmer[-1]
 
@@ -229,6 +231,7 @@ class SpeciesManager():
 
         diverging_species = list(diverging_species) # need to get a data structure that can be index to randomized
         diverging_species_groups = set()
+        nondiverging_species_groups = set()
         random.shuffle(diverging_species)
         for sid in diverging_species:
             group = self._find_containing_group(sid)
@@ -237,14 +240,23 @@ class SpeciesManager():
                 left, right = self._split_group(group)
                 if sid in left:
                     diverging_species_groups.add(left)
+                    nondiverging_species_groups.add(right)
                 else:
                     diverging_species_groups.add(right)
+                    nondiverging_species_groups.add(left)
+
+                assert(self.prev_groups[right] == group)
+                assert(self.prev_groups[left] == group)
 
                 # Graph the results of the split
-                self.graph.add_node(left, color=self._group_to_color_str(left),**self.graph_style)
-                self.graph.add_edge(left, self.prev_groups[left])
-                self.graph.add_node(right, color=self._group_to_color_str(right), **self.graph_style)
-                self.graph.add_edge(right, self.prev_groups[right])
+                node_right = self._hash_group(right)
+                node_left = self._hash_group(left)
+                node_prev = self._hash_group(group, -1)
+
+                self.graph.add_node(node_left, color=self._group_to_color_str(left), **self.graph_style)
+                self.graph.add_edge(node_left, node_prev, color="red")
+                self.graph.add_node(node_right, color=self._group_to_color_str(right), **self.graph_style)
+                self.graph.add_edge(node_right, node_prev, color="red")
 
         ready_groups = set()
         for group in self.groups:
@@ -267,6 +279,7 @@ class SpeciesManager():
                     self.species[sid].extend(kmer)
                     group_ready &= self.species[sid].mode == Mode.READY
 
+
             # Track which groups are ready to merge
             if group_ready:
                 ready_groups.add(group)
@@ -286,11 +299,32 @@ class SpeciesManager():
             if len(groupset) == 2:
                 self._merge_groups(*groupset)
                 left, right = groupset
-                self.graph.add_node(prev_group, color=self._group_to_color_str(prev_group), **self.graph_style)
-                self.graph.add_edge(prev_group, left)
-                self.graph.add_edge(prev_group, right)
+
+                node_right = self._hash_group(right, -1)
+                node_left = self._hash_group(left, -1)
+                node = self._hash_group(prev_group)
+
+                self.graph.add_node(node, color=self._group_to_color_str(prev_group), **self.graph_style) ##
+                self.graph.add_edge(node, node_left, color="blue")
+                self.graph.add_edge(node, node_right, color="blue")
+
+        for group in self.groups:
+            print(seen_prev_groups.values())
+            parent_diverged = diverging_species_groups.union(nondiverging_species_groups)
+            if group not in parent_diverged and group not in seen_prev_groups.keys():
+                # add nodes to the graph that were neither merged nor diverged
+                node = self._hash_group(group)
+                node_prev = self._hash_group(group, -1)
+                self.graph.add_node(node, color=self._group_to_color_str(group), **self.graph_style)
+                self.graph.add_edge(node_prev, node)
+
+
 
         self.iteration += 1
+
+    def _hash_group(self, group: frozenset, iteration_offset=0):
+        return (group, self.iteration + iteration_offset)
+
 
     def save_fasta(self, filename):
         """Saves the species sequences to a single fasta file"""
@@ -305,6 +339,11 @@ class SpeciesManager():
 
     def format_fasta(self) -> str:
         return "".join(["> Species #{}\n  {}\n".format(s.sid, s.seq) for s in self.species.values()])
+
+    def write_graph(self, filename="out.gv"):
+        write_dot(self.graph, filename)
+        subprocess.call(["dot", "-Tps", filename, "-o", "out.ps"])
+
 
 def example(k, s, r):
     km = KmerManager(k)
