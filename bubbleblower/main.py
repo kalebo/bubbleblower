@@ -143,6 +143,51 @@ class SpeciesManager():
     def _group_to_color_str(self, group):
         return ":".join([self.color_map[i] for i in group])
 
+    def __split_group(self, group, founders) -> [frozenset]:
+        if len(group) <= 1: # This avoids bulges
+            assert False, "Will not split groups of 1 as this creates \"bulges\""
+
+        # Split generation
+        seed_non = set([random.choice(list(group.difference(founders)))])
+        seed_groups = [{i} for i in founders] + [seed_non] # founders sets and at least one member from group that is not diverging
+        used = seed_non.union(founders)
+
+        for i in group:
+            if i not in used:
+                random.choice(seed_groups).add(i)
+                used.add(i)
+
+        groups = list(map(frozenset, seed_groups))
+
+        # State Management
+        for g in groups:
+            self.groups.append(g)
+            self.prev_groups[g] = group
+
+        self.groups.remove(group)
+
+
+        # This is the result of not remembering the structure of the data --v
+        """
+        # Bookkeeping
+        diverging = set()
+        # ASSUMPTION: seed_non is still the last element in the list
+        for g in groups[:-1]:
+            diverging = diverging.union(g)
+
+        nondiverging = diverging.difference(group)
+        """
+
+        # Graph update
+        node_prev = self._hash_group(group, -1) # ASSUMPTION: the parent group was alive exactly one iteration ago
+        for g in groups:
+            node_cur = self._hash_group(g)
+            self.graph.add_node(node_cur, color=self._group_to_color_str(g), **self.graph_style)
+            self.graph.add_edge(node_cur, node_prev, color="red")
+
+        # ASSUMPTION: seed_non is still the last element in the list
+        return groups, frozenset(groups[:-1]), frozenset(groups[-1])
+
     def _split_group(self, group) -> (frozenset, frozenset):
         if len(group) <= 1: # This avoids bulges
             assert False, "Will not split groups of 1 as this creates \"bulges\""
@@ -232,31 +277,21 @@ class SpeciesManager():
         diverging_species = list(diverging_species) # need to get a data structure that can be index to randomized
         diverging_species_groups = set()
         nondiverging_species_groups = set()
-        random.shuffle(diverging_species)
+        #random.shuffle(diverging_species) # shuffle really doesn't make sense if we are splitting all at once.
+
+        #START REFACTOR
+
+        containing_groups = set()
         for sid in diverging_species:
-            group = self._find_containing_group(sid)
-            if len(group) > 1:
-                # split and then find which other species would have diverged together.
-                left, right = self._split_group(group)
-                if sid in left:
-                    diverging_species_groups.add(left)
-                    nondiverging_species_groups.add(right)
-                else:
-                    diverging_species_groups.add(right)
-                    nondiverging_species_groups.add(left)
+            containing_groups.add(self._find_containing_group(sid))
 
-                assert(self.prev_groups[right] == group)
-                assert(self.prev_groups[left] == group)
+        for group in containing_groups:
+            founders = group.intersection(diverging_species)
+            _, diverging, nondiverging = self.__split_group(group, founders)
+            diverging_species_groups.add(diverging)
+            nondiverging_species_groups.add(nondiverging)
 
-                # Graph the results of the split
-                node_right = self._hash_group(right)
-                node_left = self._hash_group(left)
-                node_prev = self._hash_group(group, -1)
-
-                self.graph.add_node(node_left, color=self._group_to_color_str(left), **self.graph_style)
-                self.graph.add_edge(node_left, node_prev, color="red")
-                self.graph.add_node(node_right, color=self._group_to_color_str(right), **self.graph_style)
-                self.graph.add_edge(node_right, node_prev, color="red")
+        #END REFACTOR
 
         ready_groups = set()
         for group in self.groups:
