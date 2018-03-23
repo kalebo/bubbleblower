@@ -182,7 +182,7 @@ class SpeciesManager():
         node_prev = self._hash_group(group, -1) # ASSUMPTION: the parent group was alive exactly one iteration ago
         for g in groups:
             node_cur = self._hash_group(g)
-            self.graph.add_node(node_cur, color=self._group_to_color_str(g), **self.graph_style)
+            self.graph.add_node(node_cur, color=self._group_to_color_str(g), style="wedged" if len(g) > 1 else "filled", shape="circle")
             self.graph.add_edge(node_cur, node_prev, color="red")
 
         # ASSUMPTION: seed_non is still the last element in the list
@@ -287,9 +287,10 @@ class SpeciesManager():
 
         for group in containing_groups:
             founders = group.intersection(diverging_species)
-            _, diverging, nondiverging = self.__split_group(group, founders)
-            diverging_species_groups.add(diverging)
-            nondiverging_species_groups.add(nondiverging)
+            if len(group) > len(founders):
+                _, diverging, nondiverging = self.__split_group(group, founders)
+                diverging_species_groups.update(diverging)
+                nondiverging_species_groups.update(nondiverging)
 
         #END REFACTOR
 
@@ -319,6 +320,8 @@ class SpeciesManager():
             if group_ready:
                 ready_groups.add(group)
 
+        ## START MERGE REFACTOR
+
         # try merging READY branches that have the same previous set
         seen_prev_groups = {}
         for group in ready_groups:
@@ -330,7 +333,7 @@ class SpeciesManager():
                     seen_prev_groups[prev_group] = {group}
 
         for prev_group, groupset in seen_prev_groups.items():
-            assert len(groupset) <= 2
+            #assert len(groupset) <= 2
             if len(groupset) == 2:
                 self._merge_groups(*groupset)
                 left, right = groupset
@@ -343,6 +346,8 @@ class SpeciesManager():
                 self.graph.add_edge(node, node_left, color="blue")
                 self.graph.add_edge(node, node_right, color="blue")
 
+        ## END MERGE REFACTOR
+
         for group in self.groups:
             print(seen_prev_groups.values())
             parent_diverged = diverging_species_groups.union(nondiverging_species_groups)
@@ -350,10 +355,8 @@ class SpeciesManager():
                 # add nodes to the graph that were neither merged nor diverged
                 node = self._hash_group(group)
                 node_prev = self._hash_group(group, -1)
-                self.graph.add_node(node, color=self._group_to_color_str(group), **self.graph_style)
+                self.graph.add_node(node, color=self._group_to_color_str(group), style="wedged" if len(group) > 1 else "filled", shape="circle")
                 self.graph.add_edge(node_prev, node)
-
-
 
         self.iteration += 1
 
