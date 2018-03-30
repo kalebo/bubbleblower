@@ -225,20 +225,23 @@ class SpeciesManager():
                 return False
         return True
 
-    def _merge_groups(self, left, right) -> (bool, frozenset):
-        group = left.union(right)
-        if group == self.prev_groups[left] and \
-           group == self.prev_groups[right] and \
-           self._is_group_mergeable(group):
+    def _merge_groups(self, groups) -> (bool, frozenset):
+        group = set().union(*groups)
 
-            self.prev_groups.pop(right)
-            self.prev_groups.pop(left)
+        for g in groups:
+            if self.prev_groups[g] != group:
+                return False, {}
 
-            self.groups.remove(left)
-            self.groups.remove(right)
-            self.groups.append(group)
+        if self._is_group_mergeable(group):
+            frozengroup = frozenset(group)
 
-            return True, group
+            for g in groups:
+                self.prev_groups.pop(g)
+                self.groups.remove(g)
+
+            self.groups.append(frozengroup)
+
+            return True, frozengroup
 
         return False, {}
 
@@ -320,7 +323,6 @@ class SpeciesManager():
             if group_ready:
                 ready_groups.add(group)
 
-        ## START MERGE REFACTOR
 
         # try merging READY branches that have the same previous set
         seen_prev_groups = {}
@@ -332,24 +334,25 @@ class SpeciesManager():
                 else:
                     seen_prev_groups[prev_group] = {group}
 
+        ## START MERGE REFACTOR
         for prev_group, groupset in seen_prev_groups.items():
-            #assert len(groupset) <= 2
-            if len(groupset) == 2:
-                self._merge_groups(*groupset)
-                left, right = groupset
+            result, group = self._merge_groups(groupset)
 
-                node_right = self._hash_group(right, -1)
-                node_left = self._hash_group(left, -1)
+            assert type(group) != type(set())
+
+            if result:
+                assert prev_group == group
+
+                # Graph update
                 node = self._hash_group(prev_group)
-
-                self.graph.add_node(node, color=self._group_to_color_str(prev_group), **self.graph_style) ##
-                self.graph.add_edge(node, node_left, color="blue")
-                self.graph.add_edge(node, node_right, color="blue")
+                for g in groupset:
+                    node_prev = self._hash_group(g, -1)
+                    self.graph.add_node(node, color=self._group_to_color_str(prev_group), style="wedged" if len(prev_group) > 1 else "filled", shape="circle")
+                    self.graph.add_edge(node, node_prev, color="blue")
 
         ## END MERGE REFACTOR
 
         for group in self.groups:
-            print(seen_prev_groups.values())
             parent_diverged = diverging_species_groups.union(nondiverging_species_groups)
             if group not in parent_diverged and group not in seen_prev_groups.keys():
                 # add nodes to the graph that were neither merged nor diverged
@@ -386,7 +389,7 @@ class SpeciesManager():
 def example(k, s, r):
     km = KmerManager(k)
     sm = SpeciesManager(s, r, km)
-    for i in range (r):
+    for i in range (r + k):
         sm.iterate()
         if i % 1 == 0:
             print([set(i) for i in sm.groups])
