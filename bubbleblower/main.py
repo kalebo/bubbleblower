@@ -124,6 +124,7 @@ class SpeciesManager():
         self.generator = kmer_manager.generator.generate()
         self.tracker = kmer_manager.tracker
         self.cross_merges = allow_cross_merges
+        self.last_merged = set() # reset last merged
 
         self.iteration = 0
         self.mu = mu # mutation/iteration
@@ -335,6 +336,7 @@ class SpeciesManager():
                     seen_prev_groups[prev_group] = {group}
 
         ## START MERGE REFACTOR
+        merged_nodes = set()
         for prev_group, groupset in seen_prev_groups.items():
             result, group = self._merge_groups(groupset)
 
@@ -349,19 +351,21 @@ class SpeciesManager():
                     node_prev = self._hash_group(g, -1)
                     self.graph.add_node(node, color=self._group_to_color_str(prev_group), style="wedged" if len(prev_group) > 1 else "filled", shape="circle")
                     self.graph.add_edge(node, node_prev, color="blue")
+                    merged_nodes.add(node_prev)
 
         ## END MERGE REFACTOR
 
         for group in self.groups:
             parent_diverged = diverging_species_groups.union(nondiverging_species_groups)
-            if group not in parent_diverged and group not in seen_prev_groups.keys():
-                # add nodes to the graph that were neither merged nor diverged
+            if group not in parent_diverged:
                 node = self._hash_group(group)
                 node_prev = self._hash_group(group, -1)
                 self.graph.add_node(node, color=self._group_to_color_str(group), style="wedged" if len(group) > 1 else "filled", shape="circle")
-                self.graph.add_edge(node_prev, node)
+                if self.graph.has_node(node_prev) and self.graph.has_node(node):
+                    self.graph.add_edge(node_prev, node)
 
         self.iteration += 1
+        self.last_merged = merged_nodes # reset last merged
 
     def _hash_group(self, group: frozenset, iteration_offset=0):
         return (group, self.iteration + iteration_offset)
