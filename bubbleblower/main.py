@@ -283,8 +283,6 @@ class SpeciesManager():
         nondiverging_species_groups = set()
         #random.shuffle(diverging_species) # shuffle really doesn't make sense if we are splitting all at once.
 
-        #START REFACTOR
-
         containing_groups = set()
         for sid in diverging_species:
             containing_groups.add(self._find_containing_group(sid))
@@ -295,8 +293,6 @@ class SpeciesManager():
                 _, diverging, nondiverging = self.__split_group(group, founders)
                 diverging_species_groups.update(diverging)
                 nondiverging_species_groups.update(nondiverging)
-
-        #END REFACTOR
 
         ready_groups = set()
         for group in self.groups:
@@ -335,7 +331,6 @@ class SpeciesManager():
                 else:
                     seen_prev_groups[prev_group] = {group}
 
-        ## START MERGE REFACTOR
         merged_nodes = set()
         for prev_group, groupset in seen_prev_groups.items():
             result, group = self._merge_groups(groupset)
@@ -353,7 +348,6 @@ class SpeciesManager():
                     self.graph.add_edge(node, node_prev, color="blue")
                     merged_nodes.add(node_prev)
 
-        ## END MERGE REFACTOR
 
         for group in self.groups:
             parent_diverged = diverging_species_groups.union(nondiverging_species_groups)
